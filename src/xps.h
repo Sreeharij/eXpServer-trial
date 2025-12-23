@@ -4,14 +4,17 @@
 // Header files
 #include <arpa/inet.h>
 #include <assert.h>
+#include <errno.h>
+#include <fcntl.h>
 #include <netdb.h>
+#include <signal.h>
+#include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h>
-#include <stdarg.h>
+#include <stdlib.h>
 #include <sys/epoll.h>
 #include <sys/socket.h>
 #include <unistd.h>
-#include <signal.h>
 
 // 3rd party libraries
 #include "lib/vec/vec.h" // https://github.com/rxi/vec
@@ -20,10 +23,9 @@
 #define DEFAULT_BACKLOG 64
 #define MAX_EPOLL_EVENTS 32
 #define DEFAULT_BUFFER_SIZE 100000 // 100 KB
-#define DEFAULT_NULLS_THRESH 32
 
 // Error constants
-#define OK 0            // Success
+#define OK 0            // OK
 #define E_FAIL -1       // Un-recoverable error
 #define E_AGAIN -2      // Try again
 #define E_NEXT -3       // Do next
@@ -41,12 +43,16 @@ struct xps_core_s;
 struct xps_loop_s;
 struct xps_listener_s;
 struct xps_connection_s;
+struct xps_buffer_s;
+struct xps_buffer_list_s;
 
 // Struct typedefs
 typedef struct xps_core_s xps_core_t;
 typedef struct xps_loop_s xps_loop_t;
 typedef struct xps_listener_s xps_listener_t;
 typedef struct xps_connection_s xps_connection_t;
+typedef struct xps_buffer_s xps_buffer_t;
+typedef struct xps_buffer_list_s xps_buffer_list_t;
 
 // Function typedefs
 typedef void (*xps_handler_t)(void *ptr);
@@ -56,6 +62,7 @@ typedef void (*xps_handler_t)(void *ptr);
 #include "core/xps_loop.h"
 #include "network/xps_connection.h"
 #include "network/xps_listener.h"
+#include "utils/xps_buffer.h"
 #include "utils/xps_logger.h"
 #include "utils/xps_utils.h"
 

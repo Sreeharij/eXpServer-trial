@@ -1,6 +1,7 @@
 #include "../xps.h"
 
-loop_event_t *loop_event_create(u_int fd, void *ptr, xps_handler_t read_cb);
+loop_event_t *loop_event_create(u_int fd, void *ptr, xps_handler_t read_cb, xps_handler_t write_cb,
+                                xps_handler_t close_cb);
 void loop_event_destroy(loop_event_t *event);
 int loop_search_event(vec_void_t *events, loop_event_t *event);
 
@@ -51,7 +52,8 @@ void xps_loop_destroy(xps_loop_t *loop) {
   logger(LOG_DEBUG, "xps_loop_destroy()", "destroyed loop");
 }
 
-loop_event_t *loop_event_create(u_int fd, void *ptr, xps_handler_t read_cb) {
+loop_event_t *loop_event_create(u_int fd, void *ptr, xps_handler_t read_cb, xps_handler_t write_cb,
+                                xps_handler_t close_cb) {
   assert(ptr != NULL);
 
   // Alloc memory for 'event' instance
@@ -64,6 +66,8 @@ loop_event_t *loop_event_create(u_int fd, void *ptr, xps_handler_t read_cb) {
   event->fd = fd;
   event->ptr = ptr;
   event->read_cb = read_cb;
+  event->write_cb = write_cb;
+  event->close_cb = close_cb;
 
   logger(LOG_DEBUG, "loop_event_create()", "created event");
 
@@ -76,12 +80,13 @@ void loop_event_destroy(loop_event_t *event) {
   logger(LOG_DEBUG, "loop_event_destroy()", "destroyed event");
 }
 
-int xps_loop_attach(xps_loop_t *loop, u_int fd, int event_flags, void *ptr, xps_handler_t read_cb) {
+int xps_loop_attach(xps_loop_t *loop, u_int fd, int event_flags, void *ptr, xps_handler_t read_cb,
+                    xps_handler_t write_cb, xps_handler_t close_cb) {
   assert(loop != NULL);
   assert(ptr != NULL);
 
   // Create event instance
-  loop_event_t *event = loop_event_create(fd, ptr, read_cb);
+  loop_event_t *event = loop_event_create(fd, ptr, read_cb, write_cb, close_cb);
   if (event == NULL) {
     logger(LOG_ERROR, "xps_loop_attach()", "loop_event_create() failed");
     return E_FAIL;
@@ -169,11 +174,36 @@ void xps_loop_run(xps_loop_t *loop) {
         continue;
       }
 
+      if (curr_epoll_event.events & (EPOLLERR | EPOLLHUP)) {
+        logger(LOG_DEBUG, "handle_epoll_events()", "EVENT / close");
+        if (curr_event->close_cb != NULL)
+          curr_event->close_cb(curr_event->ptr);
+      }
+
+      // Check if event still exists. Could have been destroyed due to prev event
+      if (loop->events.data[curr_event_idx] == NULL) {
+        logger(LOG_DEBUG, "handle_epoll_events()", "event not found. skipping");
+        continue;
+      }
+
       // Read event
       if (curr_epoll_event.events & EPOLLIN) {
         logger(LOG_DEBUG, "handle_epoll_events()", "EVENT / read");
         if (curr_event->read_cb != NULL)
           curr_event->read_cb(curr_event->ptr);
+      }
+
+      // Check if event still exists. Could have been destroyed due to prev event
+      if (loop->events.data[curr_event_idx] == NULL) {
+        logger(LOG_DEBUG, "handle_epoll_events()", "event not found. skipping");
+        continue;
+      }
+
+      // Write event
+      if (curr_epoll_event.events & EPOLLOUT) {
+        logger(LOG_DEBUG, "handle_epoll_events()", "EVENT / write");
+        if (curr_event->write_cb != NULL)
+          curr_event->write_cb(curr_event->ptr);
       }
     }
   }
