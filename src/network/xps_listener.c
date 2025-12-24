@@ -2,7 +2,8 @@
 
 void listener_connection_handler(void *ptr);
 
-xps_listener_t *xps_listener_create(xps_core_t *core, const char *host, u_int port) {
+xps_listener_t *xps_listener_create(xps_core_t *core, const char *host,
+                                    u_int port) {
   assert(core != NULL);
   assert(host != NULL);
   assert(is_valid_port(port));
@@ -17,7 +18,8 @@ xps_listener_t *xps_listener_create(xps_core_t *core, const char *host, u_int po
 
   // Make address reusable
   const int enable = 1;
-  if (setsockopt(sock_fd, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(enable)) < 0) {
+  if (setsockopt(sock_fd, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(enable)) <
+      0) {
     logger(LOG_ERROR, "xps_listener_create()", "setsockopt() failed");
     perror("Error message");
     close(sock_fd);
@@ -34,7 +36,8 @@ xps_listener_t *xps_listener_create(xps_core_t *core, const char *host, u_int po
 
   // Binding to port
   if (bind(sock_fd, addr_info->ai_addr, addr_info->ai_addrlen) < 0) {
-    logger(LOG_ERROR, "xps_listener_create()", "failed to bind() to %s:%u", host, port);
+    logger(LOG_ERROR, "xps_listener_create()", "failed to bind() to %s:%u",
+           host, port);
     perror("Error message");
     freeaddrinfo(addr_info);
     close(sock_fd);
@@ -52,7 +55,8 @@ xps_listener_t *xps_listener_create(xps_core_t *core, const char *host, u_int po
 
   xps_listener_t *listener = malloc(sizeof(xps_listener_t));
   if (listener == NULL) {
-    logger(LOG_ERROR, "xps_listener_create()", "malloc() failed for 'listener'");
+    logger(LOG_ERROR, "xps_listener_create()",
+           "malloc() failed for 'listener'");
     close(sock_fd);
     return NULL;
   }
@@ -64,12 +68,14 @@ xps_listener_t *xps_listener_create(xps_core_t *core, const char *host, u_int po
   listener->sock_fd = sock_fd;
 
   // Attach listener to event loop
-  xps_loop_attach(core->loop, sock_fd, EPOLLIN, listener, listener_connection_handler, NULL, NULL);
+  xps_loop_attach(core->loop, sock_fd, EPOLLIN | EPOLLET, listener,
+                  listener_connection_handler, NULL, NULL);
 
   // Add listener to 'listeners' list
   vec_push(&core->listeners, listener);
 
-  logger(LOG_DEBUG, "xps_listener_create()", "created listener on port %d", port);
+  logger(LOG_DEBUG, "xps_listener_create()", "created listener on port %d",
+         port);
 
   return listener;
 }
@@ -92,7 +98,8 @@ void xps_listener_destroy(xps_listener_t *listener) {
   // Close socket
   close(listener->sock_fd);
 
-  logger(LOG_DEBUG, "xps_listener_destroy()", "destroyed listener on port %d", listener->port);
+  logger(LOG_DEBUG, "xps_listener_destroy()", "destroyed listener on port %d",
+         listener->port);
   free(listener);
 }
 
@@ -114,15 +121,18 @@ void listener_connection_handler(void *ptr) {
 
   // Making socket non blocking
   if (make_socket_non_blocking(conn_sock_fd) != OK) {
-    logger(LOG_DEBUG, "listener_connection_handler()", "make_socket_non_blocking() failed");
+    logger(LOG_DEBUG, "listener_connection_handler()",
+           "make_socket_non_blocking() failed");
     close(conn_sock_fd);
     return;
   }
 
   // Creating connection instance
-  xps_connection_t *client = xps_connection_create(listener->core, conn_sock_fd);
+  xps_connection_t *client =
+      xps_connection_create(listener->core, conn_sock_fd);
   if (client == NULL) {
-    logger(LOG_ERROR, "xps_listener_connection_handler()", "xps_connection_create() failed");
+    logger(LOG_ERROR, "xps_listener_connection_handler()",
+           "xps_connection_create() failed");
     close(conn_sock_fd);
     return;
   }

@@ -1,9 +1,10 @@
 #include "../xps.h"
 
-loop_event_t *loop_event_create(u_int fd, void *ptr, xps_handler_t read_cb, xps_handler_t write_cb,
-                                xps_handler_t close_cb);
+loop_event_t *loop_event_create(u_int fd, void *ptr, xps_handler_t read_cb,
+                                xps_handler_t write_cb, xps_handler_t close_cb);
 void loop_event_destroy(loop_event_t *event);
 int loop_search_event(vec_void_t *events, loop_event_t *event);
+bool handle_connections(xps_loop_t *loop);
 
 xps_loop_t *xps_loop_create(xps_core_t *core) {
   assert(core != NULL);
@@ -52,7 +53,8 @@ void xps_loop_destroy(xps_loop_t *loop) {
   logger(LOG_DEBUG, "xps_loop_destroy()", "destroyed loop");
 }
 
-loop_event_t *loop_event_create(u_int fd, void *ptr, xps_handler_t read_cb, xps_handler_t write_cb,
+loop_event_t *loop_event_create(u_int fd, void *ptr, xps_handler_t read_cb,
+                                xps_handler_t write_cb,
                                 xps_handler_t close_cb) {
   assert(ptr != NULL);
 
@@ -80,8 +82,9 @@ void loop_event_destroy(loop_event_t *event) {
   logger(LOG_DEBUG, "loop_event_destroy()", "destroyed event");
 }
 
-int xps_loop_attach(xps_loop_t *loop, u_int fd, int event_flags, void *ptr, xps_handler_t read_cb,
-                    xps_handler_t write_cb, xps_handler_t close_cb) {
+int xps_loop_attach(xps_loop_t *loop, u_int fd, int event_flags, void *ptr,
+                    xps_handler_t read_cb, xps_handler_t write_cb,
+                    xps_handler_t close_cb) {
   assert(loop != NULL);
   assert(ptr != NULL);
 
@@ -128,7 +131,8 @@ int xps_loop_detach(xps_loop_t *loop, u_int fd) {
 
   // Event with given fd not found
   if (event_index == -1) {
-    logger(LOG_ERROR, "xps_loop_detach()", "failed to detach from loop. event not found");
+    logger(LOG_ERROR, "xps_loop_detach()",
+           "failed to detach from loop. event not found");
     return E_FAIL;
   }
 
@@ -154,8 +158,12 @@ void xps_loop_run(xps_loop_t *loop) {
   assert(loop != NULL);
 
   while (1) {
+    bool has_ready_connections = handle_connections(loop);
+    int timeout = has_ready_connections ? 0 : -1;
+
     logger(LOG_DEBUG, "xps_loop_run()", "epoll wait");
-    int n_events = epoll_wait(loop->epoll_fd, loop->epoll_events, MAX_EPOLL_EVENTS, -1);
+    int n_events = epoll_wait(loop->epoll_fd, loop->epoll_events,
+                              MAX_EPOLL_EVENTS, timeout);
     logger(LOG_DEBUG, "xps_loop_run()", "epoll wait over");
 
     logger(LOG_DEBUG, "xps_loop_run()", "handling %d events", n_events);
@@ -167,7 +175,8 @@ void xps_loop_run(xps_loop_t *loop) {
       struct epoll_event curr_epoll_event = loop->epoll_events[i];
       loop_event_t *curr_event = curr_epoll_event.data.ptr;
 
-      // Check if event still exists. Could have been destroyed due to prev event
+      // Check if event still exists. Could have been destroyed due to prev
+      // event
       int curr_event_idx = loop_search_event(&(loop->events), curr_event);
       if (curr_event_idx == -1) {
         logger(LOG_DEBUG, "handle_epoll_events()", "event not found. skipping");
@@ -180,7 +189,8 @@ void xps_loop_run(xps_loop_t *loop) {
           curr_event->close_cb(curr_event->ptr);
       }
 
-      // Check if event still exists. Could have been destroyed due to prev event
+      // Check if event still exists. Could have been destroyed due to prev
+      // event
       if (loop->events.data[curr_event_idx] == NULL) {
         logger(LOG_DEBUG, "handle_epoll_events()", "event not found. skipping");
         continue;
@@ -193,7 +203,8 @@ void xps_loop_run(xps_loop_t *loop) {
           curr_event->read_cb(curr_event->ptr);
       }
 
-      // Check if event still exists. Could have been destroyed due to prev event
+      // Check if event still exists. Could have been destroyed due to prev
+      // event
       if (loop->events.data[curr_event_idx] == NULL) {
         logger(LOG_DEBUG, "handle_epoll_events()", "event not found. skipping");
         continue;
@@ -216,4 +227,41 @@ int loop_search_event(vec_void_t *events, loop_event_t *event) {
       return i;
   }
   return -1;
+}
+
+bool handle_connections(xps_loop_t *loop) {
+
+  for (int i = 0; i < loop->core->connections.length; i++) {
+    xps_connection_t *connection = loop->core->connections.data[i];
+
+    /*check if connection is NULL and continue if it is*/
+    if (connection == NULL)
+      continue;
+
+    if (connection->read_ready == true)
+      connection->recv_handler(connection);
+
+    // check if connection still exists
+    if (loop->core->connections.data[i] == NULL)
+      continue;
+
+    if (connection->write_ready == true && connection->write_buff_list->len > 0)
+      connection->send_handler(connection);
+  }
+
+  for (int i = 0; i < loop->core->connections.length; i++) {
+    xps_connection_t *connection = loop->core->connections.data[i];
+
+    /*check if connection is NULL and continue if it is*/
+    if (connection == NULL)
+      continue;
+
+    if (connection->read_ready == true)
+      return true;
+
+    if (connection->write_ready == true && connection->write_buff_list->len > 0)
+      return true;
+  }
+
+  return false;
 }
