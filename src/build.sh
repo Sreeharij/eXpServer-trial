@@ -1,1 +1,1 @@
-gcc -g -fsanitize=address -o xps main.c core/xps_core.c core/xps_loop.c lib/vec/vec.c network/xps_connection.c network/xps_listener.c utils/xps_logger.c utils/xps_utils.c utils/xps_buffer.c
+gcc -g -fsanitize=address -o xps main.c core/xps_core.c core/xps_loop.c core/xps_pipe.c lib/vec/vec.c network/xps_connection.c network/xps_listener.c utils/xps_logger.c utils/xps_utils.c utils/xps_buffer.c
